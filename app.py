@@ -13,6 +13,8 @@ import os
 import re
 import tempfile
 from typing import List, Optional, Tuple
+from dotenv import load_dotenv
+load_dotenv()
 
 import pandas as pd
 import psycopg2
@@ -36,7 +38,7 @@ DB_CONFIG = {
     "port":     5432,
     "dbname":   "sample_city",
     "user":     "postgres",
-    "password": "mohan",   # ← CHANGE TO YOUR PASSWORD
+    "password": os.getenv("PASS"),   # ← CHANGE TO YOUR PASSWORD
 }
 
 TABLE_NAME = "city_metrics"

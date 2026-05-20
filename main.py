@@ -18,7 +18,8 @@ import re
 import tempfile
 from typing import List, Tuple
 
-
+from dotenv import load_dotenv
+load_dotenv()
 import pandas as pd
 import streamlit as st
 import psycopg2
@@ -38,8 +39,7 @@ DB_CONFIG={
     "port":5432,
     "dbname":"city_alerte",
     "user":"postgres",
-    "password":"mohan"
-
+    "password":os.getenv("PASS"),
 }
 
 DISALLOWED_KEYWORDS = [

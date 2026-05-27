@@ -162,9 +162,26 @@ CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
 
-/* Global Font Override */
-html, body, [class*="css"], .stWidget, .stMarkdown, .stSelectbox, .stTextArea, .stSlider {
+/* Global Font Override for semantic elements */
+html, body, p, div, span, h1, h2, h3, h4, h5, h6, label, button, input, textarea, select, li, a {
     font-family: 'Outfit', sans-serif !important;
+}
+
+/* Force dark theme style directly through CSS */
+div[data-testid="stAppViewContainer"] {
+    background-color: #0d0e15 !important;
+    background-image: radial-gradient(circle at 50% 50%, #151724 0%, #0d0e15 100%) !important;
+    color: #f0f2f6 !important;
+}
+
+div[data-testid="stHeader"] {
+    background: transparent !important;
+}
+
+section[data-testid="stSidebar"] {
+    background-color: #07080c !important;
+    background-image: linear-gradient(180deg, #07080c 0%, #0c0d14 100%) !important;
+    border-right: 1px solid rgba(255, 255, 255, 0.05) !important;
 }
 
 /* Page title custom gradient */
@@ -178,6 +195,7 @@ html, body, [class*="css"], .stWidget, .stMarkdown, .stSelectbox, .stTextArea, .
 }
 
 /* Primary Button Styling */
+div.stButton > button[data-testid="baseButton-primary"],
 div.stButton > button[kind="primary"] {
     background: linear-gradient(135deg, #ff4b4b 0%, #8a2be2 100%) !important;
     color: white !important;
@@ -189,6 +207,7 @@ div.stButton > button[kind="primary"] {
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
 }
 
+div.stButton > button[data-testid="baseButton-primary"]:hover,
 div.stButton > button[kind="primary"]:hover {
     transform: translateY(-2px) !important;
     box-shadow: 0 6px 20px rgba(138, 43, 226, 0.5) !important;
@@ -196,19 +215,21 @@ div.stButton > button[kind="primary"]:hover {
 }
 
 /* Secondary Button/Record Button Styling */
+div.stButton > button[data-testid="baseButton-secondary"],
 div.stButton > button[kind="secondary"] {
     background: rgba(255, 255, 255, 0.05) !important;
     color: #f0f2f6 !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
     padding: 0.6rem 1.8rem !important;
     border-radius: 12px !important;
     transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
 }
 
+div.stButton > button[data-testid="baseButton-secondary"]:hover,
 div.stButton > button[kind="secondary"]:hover {
     transform: translateY(-2px) !important;
     background: rgba(255, 255, 255, 0.1) !important;
-    border-color: rgba(255, 255, 255, 0.25) !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
     box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -230,17 +251,34 @@ div[data-testid="stExpander"]:hover {
 }
 
 /* Styled text input & text area */
-.stTextArea textarea, .stTextInput input {
-    background-color: rgba(255, 255, 255, 0.03) !important;
-    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+.stTextArea textarea, .stTextInput input, div[data-testid="stTextArea"] textarea, div[data-testid="stTextInput"] input {
+    background-color: rgba(255, 255, 255, 0.05) !important;
+    border: 1px solid rgba(255, 255, 255, 0.15) !important;
     border-radius: 12px !important;
-    color: #f0f2f6 !important;
+    color: #ffffff !important;
     transition: all 0.3s ease !important;
 }
 
-.stTextArea textarea:focus, .stTextInput input:focus {
+.stTextArea textarea:focus, .stTextInput input:focus, div[data-testid="stTextArea"] textarea:focus, div[data-testid="stTextInput"] input:focus {
     border-color: #8a2be2 !important;
-    box-shadow: 0 0 10px rgba(138, 43, 226, 0.2) !important;
+    box-shadow: 0 0 10px rgba(138, 43, 226, 0.4) !important;
+    background-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
 }
 
 /* Custom recording pulse */

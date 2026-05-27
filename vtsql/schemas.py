@@ -5,16 +5,6 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
-class FilterState(BaseModel):
-    cities: list[str] = Field(default_factory=list)
-    temperature_min: int
-    temperature_max: int
-    humidity_min: int
-    humidity_max: int
-    range_min: int
-    range_max: int
-
-
 class DbConfigOverride(BaseModel):
     host: Optional[str] = None
     port: Optional[int] = None
@@ -28,46 +18,30 @@ class DbConfigOverride(BaseModel):
 
 class TextRequest(BaseModel):
     text: str
-    previous_filters: Optional[FilterState] = None
     db: Optional[DbConfigOverride] = None
-
-
-class IntentResponse(BaseModel):
-    intent: str
-    reason: str
-    raw: str
-
-
-class ExtractFiltersResponse(BaseModel):
-    filters: FilterState
-    raw: str
 
 
 class InterpretResponse(BaseModel):
     transcript: str
     blocked: bool
-    intent: IntentResponse
-    filters: Optional[FilterState] = None
-    filters_raw: Optional[str] = None
+    sql: Optional[str] = None
+    raw_llm: Optional[str] = None
     message: Optional[str] = None
 
 
-class QueryRequest(BaseModel):
-    filters: FilterState
+class SQLQueryRequest(BaseModel):
+    sql: str
     db: Optional[DbConfigOverride] = None
 
 
-class QueryResponse(BaseModel):
+class SQLQueryResponse(BaseModel):
     sql: str
-    params: list[Any]
     row_count: int
     rows: list[dict[str, Any]]
-    normalized_filters: dict[str, Any]
 
 
 class NLQueryRequest(BaseModel):
     text: str
-    previous_filters: Optional[FilterState] = None
     execute: bool = True
     db: Optional[DbConfigOverride] = None
 
@@ -75,14 +49,10 @@ class NLQueryRequest(BaseModel):
 class NLQueryResponse(BaseModel):
     transcript: str
     blocked: bool
-    intent: IntentResponse
-    filters: Optional[FilterState] = None
-    filters_raw: Optional[str] = None
     sql: Optional[str] = None
-    params: Optional[list[Any]] = None
+    raw_llm: Optional[str] = None
     row_count: int = 0
     rows: list[dict[str, Any]] = Field(default_factory=list)
-    normalized_filters: Optional[dict[str, Any]] = None
     message: Optional[str] = None
 
 

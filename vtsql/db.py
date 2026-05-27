@@ -6,7 +6,6 @@ import pandas as pd
 import streamlit as st
 
 from vtsql.db_core import db_connect as _db_connect
-from vtsql.db_core import fetch_distinct_cities as _fetch_distinct_cities
 from vtsql.db_core import get_db_config
 from vtsql.db_core import run_select_query as _run_select_query_rows
 
@@ -34,17 +33,8 @@ def db_connect():
     return _db_connect(merged_db_config())
 
 
-@st.cache_data(ttl=30)
-def fetch_distinct_cities() -> tuple[str, ...]:
-    try:
-        return _fetch_distinct_cities(merged_db_config())
-    except Exception as exc:  # noqa: BLE001
-        st.warning(f"Could not load city list from database: {exc}")
-        return tuple()
-
-
-def run_select_query(sql: str, params: tuple[Any, ...]) -> tuple[pd.DataFrame, Optional[str]]:
-    rows, err = _run_select_query_rows(sql, params, merged_db_config())
+def run_select_query(sql: str) -> tuple[pd.DataFrame, Optional[str]]:
+    rows, err = _run_select_query_rows(sql, merged_db_config())
     if err:
         return pd.DataFrame(), err
     return pd.DataFrame(rows), None

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-import pandas as pd
 import psycopg2
+import psycopg2.extras
 
 from vtsql.config import DEFAULT_DB_CONFIG
 
@@ -19,37 +19,30 @@ def get_db_config(overrides: dict[str, Any] | None = None) -> dict[str, Any]:
 
 def db_connect(overrides: dict[str, Any] | None = None):
     cfg = get_db_config(overrides)
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=cfg["host"],
         port=cfg["port"],
         dbname=cfg["dbname"],
         user=cfg["user"],
         password=cfg["password"],
     )
-
-
-def fetch_distinct_cities(overrides: dict[str, Any] | None = None) -> tuple[str, ...]:
-    conn = db_connect(overrides)
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT DISTINCT TRIM(city) AS city FROM city_metrics "
-                "WHERE city IS NOT NULL AND TRIM(city) <> '' ORDER BY city"
-            )
-            rows = [r[0] for r in cur.fetchall() if r[0]]
-        return tuple(rows)
-    finally:
-        conn.close()
+    conn.autocommit = True
+    return conn
 
 
 def run_select_query(
-    sql: str, params: tuple[Any, ...], overrides: dict[str, Any] | None = None
+    sql: str, overrides: dict[str, Any] | None = None
 ) -> tuple[list[dict[str, Any]], Optional[str]]:
     conn = None
     try:
         conn = db_connect(overrides)
-        df = pd.read_sql_query(sql, conn, params=params)
-        return df.to_dict(orient="records"), None
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql)
+            if cur.description:
+                rows = [dict(r) for r in cur.fetchall()]
+            else:
+                rows = []
+            return rows, None
     except Exception as exc:  # noqa: BLE001
         return [], str(exc)
     finally:

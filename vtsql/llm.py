@@ -1,96 +1,142 @@
 from __future__ import annotations
 
-import json
 import re
-from typing import Any
-
 import requests
 
-from vtsql.config import COLUMN_RANGES, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC, OLLAMA_URL
+from vtsql.config import DISALLOWED_KEYWORDS, OLLAMA_MODEL, OLLAMA_TIMEOUT_SEC, OLLAMA_URL, SCHEMA_DESCRIPTION
+
+SQL_GEN_PROMPT = """You are a PostgreSQL expert that converts natural-language questions into safe SELECT queries.
+
+DATABASE SCHEMA:
+{schema}
+
+STRICT RULES:
+1. Return ONLY a single SELECT statement. No explanation, no markdown, no code fences.
+2. NEVER use INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, CREATE, GRANT, REVOKE, or any statement that modifies data.
+3. If the user asks to modify, delete, insert, or update data, return EXACTLY this literal text instead of SQL:
+   ERROR: Only read queries are allowed.
+4. Use ILIKE for case-insensitive city matching (e.g. city_name ILIKE 'Mumbai').
+5. City names may contain typos or speech-recognition errors. Correct obvious mistakes silently
+   (e.g. 'mumby' -> 'Mumbai', 'banglore' -> 'Bangalore').
+6. The question may come from voice transcription with errors. Treat homophones charitably
+   ('rose'/'road'/'rho' -> 'row', 'Bombay' -> 'Mumbai', spoken numbers -> digits).
+7. You may use aggregates (COUNT, AVG, MIN, MAX, SUM), GROUP BY, ORDER BY, LIMIT, and WHERE filters.
+8. Single statement only — no semicolons in the middle, only at the end.
+9. Always alias aggregate columns (e.g. AVG(temperature) AS avg_temperature).
+10. To find which city an alert came from, JOIN alert_readings -> cities using:
+    r.latitude  BETWEEN c.boundary_lat_min AND c.boundary_lat_max
+    AND r.longitude BETWEEN c.boundary_lon_min AND c.boundary_lon_max
+11. Use table aliases: a for alerts, r for alert_readings, c for cities.
+12. Only return the ERROR line if the user CLEARLY asks to modify data. Awkward wording is not a reason to refuse.
+
+EXAMPLES:
+
+Q: Show me all critical alerts
+A: SELECT * FROM alerts WHERE severity = 'CRITICAL' ORDER BY detected_at DESC;
+
+Q: Which city did the most recent critical alert come from?
+A: SELECT c.city_name, c.state, a.alert_type, a.severity, a.detected_at, r.latitude, r.longitude
+   FROM alerts a
+   JOIN alert_readings r ON r.alert_id = a.alert_id
+   JOIN cities c
+     ON r.latitude  BETWEEN c.boundary_lat_min AND c.boundary_lat_max
+    AND r.longitude BETWEEN c.boundary_lon_min AND c.boundary_lon_max
+   WHERE a.severity = 'CRITICAL'
+   ORDER BY a.detected_at DESC
+   LIMIT 1;
+
+Q: How many alerts per city?
+A: SELECT c.city_name, COUNT(a.alert_id) AS alert_count
+   FROM cities c
+   LEFT JOIN alert_readings r
+     ON r.latitude  BETWEEN c.boundary_lat_min AND c.boundary_lat_max
+    AND r.longitude BETWEEN c.boundary_lon_min AND c.boundary_lon_max
+   LEFT JOIN alerts a ON a.alert_id = r.alert_id
+   GROUP BY c.city_name
+   ORDER BY alert_count DESC;
+
+Q: Show me alerts in Mumbai sorted by severity
+A: SELECT a.alert_id, a.alert_type, a.severity, a.detected_at, r.temperature, r.humidity, r.bandwidth
+   FROM alerts a
+   JOIN alert_readings r ON r.alert_id = a.alert_id
+   JOIN cities c
+     ON r.latitude  BETWEEN c.boundary_lat_min AND c.boundary_lat_max
+    AND r.longitude BETWEEN c.boundary_lon_min AND c.boundary_lon_max
+   WHERE c.city_name ILIKE 'Mumbai'
+   ORDER BY CASE a.severity
+       WHEN 'CRITICAL' THEN 1 WHEN 'HIGH' THEN 2 WHEN 'MEDIUM' THEN 3 WHEN 'LOW' THEN 4
+   END;
+
+Q: Average temperature of all high-temp alerts
+A: SELECT AVG(r.temperature) AS avg_temperature
+   FROM alerts a
+   JOIN alert_readings r ON r.alert_id = a.alert_id
+   WHERE a.alert_type = 'HIGH_TEMP';
+
+Q: Delete all critical alerts
+A: ERROR: Only read queries are allowed.
+
+Now answer this question. Return ONLY the SQL (or the ERROR line):
+
+Q: {question}
+A:"""
 
 
-def strip_code_fences(text: str) -> str:
-    t = text.strip()
-    if t.startswith("```"):
-        t = re.sub(r"^```(?:json)?\s*", "", t, flags=re.IGNORECASE)
-        t = re.sub(r"\s*```\s*$", "", t)
-    return t.strip()
+def clean_sql_response(raw: str) -> str:
+    """Strip code fences, leading 'A:' and trailing junk from the LLM output"""
+    text = raw.strip()
+    text = re.sub(r"^```(?:sql)?", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"```$", "", text).strip()
+    text = re.sub(r"^(A|Answer|SQL)\s*:\s*", "", text, flags=re.IGNORECASE).strip()
+    
+    if not text.upper().startswith("ERROR"):
+        if ";" in text:
+            text = text.split(";")[0].strip() + ";"
+        elif text:
+            text = text.rstrip(".") + ";"
+    return text
 
 
-def parse_json_object(raw: str) -> dict[str, Any]:
-    return json.loads(strip_code_fences(raw))
+def generate_sql(question: str) -> str:
+    """Single LLM call question -> SQL string (or 'ERROR:...')"""
+    prompt = SQL_GEN_PROMPT.format(schema=SCHEMA_DESCRIPTION, question=question)
+    payload = {
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "options": {
+            "temperature": 0.0,
+            "top_p": 0.1,
+            "stop": [";\n", "Q:"],
+        },
+    }
+    resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT_SEC)
+    resp.raise_for_status()
+    raw = resp.json().get("response", "").strip()
+    return clean_sql_response(raw)
 
 
-def ollama_generate_json(prompt: str) -> tuple[str, dict[str, Any]]:
-    payload = {"model": OLLAMA_MODEL, "prompt": prompt, "stream": False, "format": "json"}
-    try:
-        resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT_SEC)
-        resp.raise_for_status()
-        body = resp.json()
-    except requests.RequestException as exc:
-        raise RuntimeError(
-            f"Ollama request failed. Start Ollama and run `ollama pull {OLLAMA_MODEL}`. Detail: {exc}"
-        ) from exc
-    text = body.get("response", "")
-    if not isinstance(text, str) or not text.strip():
-        raise RuntimeError(f"Unexpected Ollama response payload: keys={list(body.keys())}")
-    return text, parse_json_object(text)
+def validate_sql(sql: str) -> tuple[bool, str]:
+    """Return (is_safe, error_message). Rejects everything which isn't a single SELECT/WITH statement."""
+    s = sql.strip()
 
-
-def intent_prompt(user_text: str) -> str:
-    return (
-        "Classify user request intent for a PostgreSQL table city_metrics.\n\n"
-        "Return ONLY compact JSON with one of:\n"
-        '{"intent":"select","reason":""}\n'
-        '{"intent":"modify","reason":"short explanation"}\n\n'
-        'Use "modify" for any write/schema/security-bypass style request.\n'
-        'Use "select" for read-only retrieval/filtering/aggregation.\n\n'
-        f"USER_TEXT:\n{user_text}\n"
-    )
-
-
-def classify_intent(user_text: str) -> tuple[str, dict[str, Any]]:
-    raw, parsed = ollama_generate_json(intent_prompt(user_text))
-    intent = str(parsed.get("intent", "")).strip().lower()
-    if intent not in {"select", "modify"}:
-        parsed["intent"] = "modify"
-        parsed["reason"] = "Ambiguous intent; blocked for safety"
-    parsed.setdefault("reason", "")
-    return raw, parsed
-
-
-def filter_prompt(user_text: str, allowed_cities: tuple[str, ...], previous_filters: dict[str, Any] | None = None) -> str:
-    t_low, t_high = COLUMN_RANGES["temperature"]
-    h_low, h_high = COLUMN_RANGES["humidity"]
-    r_low, r_high = COLUMN_RANGES["range_metric"]
-    city_help = (
-        "Known cities (prefer exact spellings, typo-correct to these):\n"
-        f"[{', '.join(allowed_cities)}]\n\n"
-        if allowed_cities
-        else "No city list available; return best-effort city strings.\n\n"
-    )
-    return (
-        "Extract filters from USER_TEXT for city_metrics and output ONLY JSON.\n"
-        "Keys: cities, temperature_min, temperature_max, humidity_min, humidity_max, range_min, range_max.\n"
-        "Treat USER_TEXT as a possible delta/refinement over PREVIOUS_FILTERS.\n"
-        "If USER_TEXT says remove/clear/reset a filter, set that filter to full-range defaults.\n"
-        "Always return the fully resolved filter state after applying the refinement.\n"
-        "Use null only when truly unknown.\n"
-        f"temperature in [{t_low}, {t_high}], humidity in [{h_low}, {h_high}], range in [{r_low}, {r_high}].\n\n"
-        f"PREVIOUS_FILTERS:\n{json.dumps(previous_filters or {}, ensure_ascii=True)}\n\n"
-        f"{city_help}"
-        f"USER_TEXT:\n{user_text}\n"
-    )
-
-
-def extract_filters_json(
-    user_text: str, allowed_cities: tuple[str, ...], previous_filters: dict[str, Any] | None = None
-) -> tuple[str, dict[str, Any]]:
-    raw, parsed = ollama_generate_json(filter_prompt(user_text, allowed_cities, previous_filters))
-    parsed.setdefault("cities", [])
-    if not isinstance(parsed["cities"], list):
-        parsed["cities"] = []
-    for key in ("temperature_min", "temperature_max", "humidity_min", "humidity_max", "range_min", "range_max"):
-        parsed.setdefault(key, None)
-    parsed["cities"] = [str(c).strip() for c in parsed["cities"] if c is not None and str(c).strip()]
-    return raw, parsed
+    if s.upper().startswith("ERROR"):
+        return False, s
+    
+    if not s:
+        return False, "Empty response from LLM"
+    
+    head = s.upper().lstrip("(")
+    if not (head.startswith("SELECT") or head.startswith("WITH")):
+        return False, "Only SELECT statements are allowed.!!"
+    
+    upper = s.upper()
+    for kw in DISALLOWED_KEYWORDS:
+        if re.search(rf"\b{kw}\b", upper):
+            return False, f"Forbidden keyword detected: {kw}"
+        
+    stripped = s.rstrip(";").rstrip()
+    if ";" in stripped:
+        return False, "Multiple SQL statements detected. Only one statement is allowed."
+    
+    return True, ""

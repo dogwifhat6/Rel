@@ -30,8 +30,16 @@ def handle_voice(duration: int) -> None:
 
     # Record
     try:
-        with st.spinner(f"🎙️ Recording for {duration}s..."):
-            samples = record_microphone(float(duration), SAMPLE_RATE)
+        status_placeholder = st.empty()
+        status_placeholder.markdown(
+            '<div style="display: flex; align-items: center; margin-bottom: 12px; padding: 12px; background: rgba(255, 75, 75, 0.1); border: 1px solid rgba(255, 75, 75, 0.2); border-radius: 12px;">'
+            '<span class="pulse-mic"></span>'
+            '<span style="font-weight: 600; color: #ff4b4b;">Recording audio... Speak now!</span>'
+            '</div>',
+            unsafe_allow_html=True
+        )
+        samples = record_microphone(float(duration), SAMPLE_RATE)
+        status_placeholder.empty()
     except Exception as exc:  # noqa: BLE001
         st.session_state["error"] = f"❌ Recording failed: {exc}. Please install PortAudio and verify microphone access."
         return
@@ -150,9 +158,125 @@ def render_geospatial_map(df: pd.DataFrame) -> None:
     ))
 
 
+CUSTOM_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+/* Global Font Override */
+html, body, [class*="css"], .stWidget, .stMarkdown, .stSelectbox, .stTextArea, .stSlider {
+    font-family: 'Outfit', sans-serif !important;
+}
+
+/* Page title custom gradient */
+.main-title {
+    background: linear-gradient(135deg, #ff4b4b 0%, #8a2be2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 800 !important;
+    font-size: 2.6rem !important;
+    margin-bottom: 0.2rem !important;
+}
+
+/* Primary Button Styling */
+div.stButton > button[kind="primary"] {
+    background: linear-gradient(135deg, #ff4b4b 0%, #8a2be2 100%) !important;
+    color: white !important;
+    font-weight: 600 !important;
+    border: none !important;
+    padding: 0.6rem 1.8rem !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 15px rgba(255, 75, 75, 0.3) !important;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+
+div.stButton > button[kind="primary"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(138, 43, 226, 0.5) !important;
+    background: linear-gradient(135deg, #ff6b6b 0%, #9a3bf5 100%) !important;
+}
+
+/* Secondary Button/Record Button Styling */
+div.stButton > button[kind="secondary"] {
+    background: rgba(255, 255, 255, 0.05) !important;
+    color: #f0f2f6 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    padding: 0.6rem 1.8rem !important;
+    border-radius: 12px !important;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+}
+
+div.stButton > button[kind="secondary"]:hover {
+    transform: translateY(-2px) !important;
+    background: rgba(255, 255, 255, 0.1) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Glassmorphism containers and expanders */
+div[data-testid="stExpander"] {
+    background: rgba(255, 255, 255, 0.02) !important;
+    border: 1px solid rgba(255, 255, 255, 0.07) !important;
+    border-radius: 16px !important;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.15) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+    margin-bottom: 1rem !important;
+    transition: all 0.3s ease !important;
+}
+
+div[data-testid="stExpander"]:hover {
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.22) !important;
+}
+
+/* Styled text input & text area */
+.stTextArea textarea, .stTextInput input {
+    background-color: rgba(255, 255, 255, 0.03) !important;
+    border: 1px solid rgba(255, 255, 255, 0.08) !important;
+    border-radius: 12px !important;
+    color: #f0f2f6 !important;
+    transition: all 0.3s ease !important;
+}
+
+.stTextArea textarea:focus, .stTextInput input:focus {
+    border-color: #8a2be2 !important;
+    box-shadow: 0 0 10px rgba(138, 43, 226, 0.2) !important;
+}
+
+/* Custom recording pulse */
+.pulse-mic {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    background-color: #ff4b4b;
+    border-radius: 50%;
+    margin-right: 8px;
+    box-shadow: 0 0 0 rgba(255, 75, 75, 0.4);
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(255, 75, 75, 0.7);
+    }
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(255, 75, 75, 0);
+    }
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(255, 75, 75, 0);
+    }
+}
+</style>
+"""
+
+
 def render_app() -> None:
     st.set_page_config(page_title="Voice-to-SQL", page_icon="🔍", layout="wide")
-    st.title("🔍 Voice-to-SQL Database Query")
+    st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+    st.markdown('<h1 class="main-title">🔍 Voice-to-SQL Database Query</h1>', unsafe_allow_html=True)
     st.caption("3 connected tables: `cities` ↔ `alert_readings` ↔ `alerts`. Ask in natural language.")
 
     init_state()

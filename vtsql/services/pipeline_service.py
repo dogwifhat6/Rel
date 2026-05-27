@@ -34,10 +34,21 @@ def run_interpret(text: str) -> dict[str, Any]:
     if not stripped:
         raise ValueError("Text must not be empty")
 
+    from vtsql.cache import check_cache
+    sql = None
+    from_cache = False
     try:
-        sql = generate_sql(stripped)
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError(f"Error during SQL generation: {exc}") from exc
+        sql = check_cache(stripped)
+        if sql:
+            from_cache = True
+    except Exception:  # noqa: BLE001
+        pass
+
+    if not sql:
+        try:
+            sql = generate_sql(stripped)
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"Error during SQL generation: {exc}") from exc
 
     ok, err = validate_sql(sql)
     return {
@@ -45,7 +56,8 @@ def run_interpret(text: str) -> dict[str, Any]:
         "blocked": not ok,
         "sql": sql,
         "raw_llm": sql,
-        "message": err if not ok else "SQL generated successfully",
+        "message": err if not ok else ("Semantic cache hit" if from_cache else "SQL generated successfully"),
+        "from_cache": from_cache,
     }
 
 
@@ -91,6 +103,12 @@ def run_nl_query(
             "rows": query_out["rows"],
             "message": "Query executed successfully",
         })
+        if not interpreted.get("from_cache"):
+            from vtsql.cache import store_in_cache
+            try:
+                store_in_cache(interpreted["transcript"], interpreted["sql"])
+            except Exception:  # noqa: BLE001
+                pass
     except Exception as exc:  # noqa: BLE001
         result["message"] = f"Execution error: {exc}"
 

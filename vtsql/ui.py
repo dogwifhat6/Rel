@@ -162,8 +162,13 @@ CUSTOM_CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
 
-/* Global Font Override for semantic elements */
-html, body, p, div, span, h1, h2, h3, h4, h5, h6, label, button, input, textarea, select, li, a {
+/* Global Font Override for semantic elements, avoiding icon font container overrides */
+html, body, p, h1, h2, h3, h4, h5, h6, label, input, textarea, select, li {
+    font-family: 'Outfit', sans-serif !important;
+}
+
+/* Apply font override to specific text components while excluding Streamlit material symbols */
+.stMarkdown, .stMarkdown p, .stSubheader, .stCaption {
     font-family: 'Outfit', sans-serif !important;
 }
 
@@ -197,10 +202,11 @@ section[data-testid="stSidebar"] {
 /* Primary Button Styling */
 div.stButton > button[data-testid="baseButton-primary"],
 div.stButton > button[kind="primary"] {
+    font-family: 'Outfit', sans-serif !important;
     background: linear-gradient(135deg, #ff4b4b 0%, #8a2be2 100%) !important;
     color: white !important;
     font-weight: 600 !important;
-    border: none !important;
+    border: 1px solid transparent !important;
     padding: 0.6rem 1.8rem !important;
     border-radius: 12px !important;
     box-shadow: 0 4px 15px rgba(255, 75, 75, 0.3) !important;
@@ -217,6 +223,7 @@ div.stButton > button[kind="primary"]:hover {
 /* Secondary Button/Record Button Styling */
 div.stButton > button[data-testid="baseButton-secondary"],
 div.stButton > button[kind="secondary"] {
+    font-family: 'Outfit', sans-serif !important;
     background: rgba(255, 255, 255, 0.05) !important;
     color: #f0f2f6 !important;
     border: 1px solid rgba(255, 255, 255, 0.15) !important;

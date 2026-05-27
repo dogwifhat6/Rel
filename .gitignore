@@ -14,3 +14,4 @@ venv/
 *.wav
 *.mp3
 .cursor/
+*.db

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import pandas as pd
+import pydeck as pdk
 import streamlit as st
 
 from vtsql.audio import record_microphone, transcribe
 from vtsql.config import DEFAULT_DURATION, OLLAMA_MODEL, SAMPLE_RATE, WHISPER_MODEL_SIZE
+from vtsql.db import run_select_query
 from vtsql.pipeline import process_question
 
 
@@ -44,6 +46,108 @@ def handle_voice(duration: int) -> None:
         process_question(text)
     except Exception as exc:  # noqa: BLE001
         st.session_state["error"] = f"❌ Transcription failed: {exc}"
+
+
+def render_geospatial_map(df: pd.DataFrame) -> None:
+    """Renders city bounding box polygons and alert reading scatter points if coordinates are present."""
+    if "latitude" not in df.columns or "longitude" not in df.columns:
+        return
+
+    # Clean up and filter rows with valid coordinates
+    map_df = df.dropna(subset=["latitude", "longitude"]).copy()
+    if map_df.empty:
+        return
+
+    # Convert lat/lon columns to floats
+    map_df["latitude"] = map_df["latitude"].astype(float)
+    map_df["longitude"] = map_df["longitude"].astype(float)
+
+    # Determine point colors based on severity
+    def get_color(row: pd.Series) -> list[int]:
+        sev = str(row.get("severity") or "").upper()
+        if "CRITICAL" in sev:
+            return [220, 53, 69, 200]  # Red
+        if "HIGH" in sev:
+            return [253, 126, 20, 200]  # Orange
+        if "MEDIUM" in sev:
+            return [255, 193, 7, 200]  # Yellow
+        if "LOW" in sev:
+            return [40, 167, 69, 200]  # Green
+        return [0, 123, 255, 200]  # Blue
+
+    map_df["color"] = map_df.apply(get_color, axis=1)
+
+    # Load all city boundaries from the database to display as background boundaries
+    cities_polygons = []
+    try:
+        cities_df, err = run_select_query("SELECT city_name, boundary_lat_min, boundary_lat_max, boundary_lon_min, boundary_lon_max FROM cities")
+        if not err and not cities_df.empty:
+            for _, row in cities_df.iterrows():
+                lat_min = float(row["boundary_lat_min"])
+                lat_max = float(row["boundary_lat_max"])
+                lon_min = float(row["boundary_lon_min"])
+                lon_max = float(row["boundary_lon_max"])
+                cities_polygons.append({
+                    "name": row["city_name"],
+                    "coordinates": [
+                        [lon_min, lat_min],
+                        [lon_max, lat_min],
+                        [lon_max, lat_max],
+                        [lon_min, lat_max],
+                        [lon_min, lat_min]
+                    ]
+                })
+    except Exception:  # noqa: BLE001
+        pass
+
+    layers = []
+
+    # 1. Add background city polygons if available
+    if cities_polygons:
+        cities_poly_df = pd.DataFrame(cities_polygons)
+        cities_layer = pdk.Layer(
+            "PolygonLayer",
+            cities_poly_df,
+            get_polygon="coordinates",
+            get_fill_color="[100, 149, 237, 30]",  # Translucent Cornflower Blue
+            get_line_color="[100, 149, 237, 120]",
+            line_width_min_pixels=1.5,
+            pickable=True,
+            auto_highlight=True,
+        )
+        layers.append(cities_layer)
+
+    # 2. Add scatterplot layer for alert readings
+    points_layer = pdk.Layer(
+        "ScatterplotLayer",
+        map_df,
+        get_position="[longitude, latitude]",
+        get_color="color",
+        get_radius=12000,  # 12km radius
+        radius_min_pixels=6,
+        radius_max_pixels=25,
+        pickable=True,
+        auto_highlight=True,
+    )
+    layers.append(points_layer)
+
+    # Center map on the mean coordinates of results
+    mean_lat = float(map_df["latitude"].mean())
+    mean_lon = float(map_df["longitude"].mean())
+
+    view_state = pdk.ViewState(
+        latitude=mean_lat,
+        longitude=mean_lon,
+        zoom=5.5,
+        pitch=0,
+    )
+
+    st.subheader("🗺️ Spatial Alert Map")
+    st.pydeck_chart(pdk.Deck(
+        layers=layers,
+        initial_view_state=view_state,
+        tooltip={"text": "Coordinates: {latitude}, {longitude}\nDetails: {alert_type} ({severity})\nTemp: {temperature}°C | Humidity: {humidity}%"},
+    ))
 
 
 def render_app() -> None:
@@ -109,10 +213,13 @@ def render_app() -> None:
 
     if st.session_state.get("rows") is not None:
         rows = st.session_state["rows"]
-        st.subheader(f"📋 Results ({len(rows)} rows)")
         if rows:
-            st.dataframe(pd.DataFrame(rows), use_container_width=True)
+            df_results = pd.DataFrame(rows)
+            render_geospatial_map(df_results)
+            st.subheader(f"📋 Results ({len(rows)} rows)")
+            st.dataframe(df_results, use_container_width=True)
         else:
+            st.subheader("📋 Results (0 rows)")
             st.info("No rows matched.")
 
     if st.session_state.get("status") and not st.session_state.get("error"):

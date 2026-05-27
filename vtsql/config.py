@@ -9,6 +9,8 @@ WHISPER_MODEL_SIZE = "base"
 OLLAMA_MODEL = "llama3.2:3b"
 OLLAMA_URL = os.environ.get("OLLAMA_GENERATE_URL", "http://localhost:11434/api/generate")
 OLLAMA_TIMEOUT_SEC = int(os.environ.get("OLLAMA_TIMEOUT_SEC", "120"))
+OLLAMA_EMBED_URL = os.environ.get("OLLAMA_EMBED_URL", "http://localhost:11434/api/embeddings")
+CACHE_SIMILARITY_THRESHOLD = 0.90
 
 DEFAULT_DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "localhost"),

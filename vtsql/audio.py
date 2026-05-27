@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-import sounddevice as sd
 import streamlit as st
 from faster_whisper import WhisperModel
 
@@ -16,6 +15,15 @@ def load_whisper() -> WhisperModel:
 
 
 def record_microphone(duration_sec: float, samplerate: int) -> np.ndarray:
+    try:
+        import sounddevice as sd
+    except (ImportError, OSError) as exc:
+        raise RuntimeError(
+            f"sounddevice or PortAudio error: {exc}. "
+            "Please make sure PortAudio is installed on your system (e.g., 'brew install portaudio' on macOS "
+            "or 'apt-get install portaudio19-dev' on Ubuntu/Debian)."
+        ) from exc
+
     frames = max(1, int(duration_sec * samplerate))
     audio = sd.rec(frames, samplerate=samplerate, channels=1, dtype=np.float32)
     sd.wait()

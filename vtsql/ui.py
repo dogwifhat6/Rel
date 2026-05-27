@@ -18,6 +18,16 @@ from vtsql.pipeline import process_user_text
 from vtsql.sql_builder import build_sql_and_params, normalized_filter_debug
 
 
+def _sync_cities_sidebar_to_main() -> None:
+    st.session_state["cities_sel"] = st.session_state["cities_sel_sidebar"]
+    st.session_state["cities_sel_main"] = st.session_state["cities_sel_sidebar"]
+
+
+def _sync_cities_main_to_sidebar() -> None:
+    st.session_state["cities_sel"] = st.session_state["cities_sel_main"]
+    st.session_state["cities_sel_sidebar"] = st.session_state["cities_sel_main"]
+
+
 def _sync_query_params_from_state() -> None:
     state = current_filter_state()
     st.query_params["cities"] = ",".join(state["cities"])
@@ -86,13 +96,13 @@ def _show_filter_feedback_panel() -> None:
     s = _human_filter_summary()
     st.subheader("Extracted / Active Filters")
     c1, c2, c3, c4 = st.columns(4)
-    if c1.button(f"Cities: {s['cities']}", key="focus_cities", width="stretch"):
+    if c1.button(f"Cities: {s['cities']}", key="focus_cities", use_container_width=True):
         st.session_state["focus_filter"] = "cities"
-    if c2.button(f"Temperature: {s['temp']}", key="focus_temp", width="stretch"):
+    if c2.button(f"Temperature: {s['temp']}", key="focus_temp", use_container_width=True):
         st.session_state["focus_filter"] = "temperature"
-    if c3.button(f"Humidity: {s['hum']}", key="focus_hum", width="stretch"):
+    if c3.button(f"Humidity: {s['hum']}", key="focus_hum", use_container_width=True):
         st.session_state["focus_filter"] = "humidity"
-    if c4.button(f"Range: {s['range']}", key="focus_range", width="stretch"):
+    if c4.button(f"Range: {s['range']}", key="focus_range", use_container_width=True):
         st.session_state["focus_filter"] = "range"
 
 
@@ -120,12 +130,13 @@ def render_app() -> None:
         st.multiselect(
             "Cities quick pick",
             options=list(st.session_state.get("cities_options_list") or cities_from_db),
-            key="cities_sel",
+            key="cities_sel_sidebar",
+            on_change=_sync_cities_sidebar_to_main,
             help="This stays in sync with extracted city filters.",
         )
 
         st.text_input("Save current query as", key="save_query_name")
-        if st.button("Star Save", width="stretch"):
+        if st.button("Star Save", use_container_width=True):
             name = (st.session_state.get("save_query_name") or "").strip()
             if not name:
                 st.warning("Enter a name first.")
@@ -139,7 +150,7 @@ def render_app() -> None:
                 st.success(f"Saved query '{name}'")
         saved_names = sorted((st.session_state.get("saved_queries") or {}).keys())
         selected_saved = st.selectbox("Load saved query", [""] + saved_names, index=0)
-        if st.button("Load saved", width="stretch") and selected_saved:
+        if st.button("Load saved", use_container_width=True) and selected_saved:
             payload = st.session_state["saved_queries"][selected_saved]
             apply_filter_state_snapshot(payload["filters"], cities_from_db)
             st.session_state["last_transcript"] = payload.get("transcript", "")
@@ -152,8 +163,8 @@ def render_app() -> None:
             ensure_slider_defaults_if_missing()
             st.rerun()
 
-        submitted = st.button("Submit typed query", width="stretch")
-        recorded = st.button("Record microphone", width="stretch")
+        submitted = st.button("Submit typed query", use_container_width=True)
+        recorded = st.button("Record microphone", use_container_width=True)
 
         with st.expander("Connection hints"):
             cfg = merged_db_config()
@@ -182,7 +193,7 @@ def render_app() -> None:
         with st.expander("Query history (last 10)", expanded=False):
             for idx, item in enumerate(st.session_state.get("query_history") or []):
                 label = f"{item['ts']} | {item['row_count']} rows | {item['query'][:40]}"
-                if st.button(label, key=f"hist_{idx}", width="stretch"):
+                if st.button(label, key=f"hist_{idx}", use_container_width=True):
                     apply_filter_state_snapshot(item["filters"], cities_from_db)
                     st.session_state["last_transcript"] = item["query"]
                     st.session_state["pipeline_note"] = "history_replay"
@@ -204,7 +215,8 @@ def render_app() -> None:
         st.multiselect(
             "Cities (leave empty for all cities)",
             options=list(st.session_state.get("cities_options_list") or cities_from_db),
-            key="cities_sel",
+            key="cities_sel_main",
+            on_change=_sync_cities_main_to_sidebar,
         )
 
     with st.expander("Temperature filter", expanded=focus == "temperature"):
@@ -240,7 +252,7 @@ def render_app() -> None:
 
     city_selection = list(st.session_state.get("cities_sel") or [])
 
-    run_query = st.button("Run Query", type="primary", width="stretch")
+    run_query = st.button("Run Query", type="primary", use_container_width=True)
     sql_text, sql_params = build_sql_and_params(
         list(city_selection), temp_min, temp_max, hum_min, hum_max, range_min, range_max
     )

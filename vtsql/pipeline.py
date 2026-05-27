@@ -52,5 +52,7 @@ def process_user_text(query: str) -> None:
         st.error(f"Filter model returned invalid JSON: {exc}")
         return
 
-    apply_extracted_filters_to_session(filter_parsed, cities_cache)
+    from vtsql.filters_core import merge_filter_delta
+    resolved = merge_filter_delta(prev_filters, filter_parsed)
+    apply_extracted_filters_to_session(resolved, cities_cache)
     st.session_state["pipeline_note"] = "filters_applied"

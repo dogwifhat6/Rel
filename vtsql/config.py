@@ -6,7 +6,7 @@ SAMPLE_RATE = 16000
 DEFAULT_DURATION = 10
 WHISPER_MODEL_SIZE = "base"
 
-OLLAMA_MODEL = "qwen2.5"
+OLLAMA_MODEL = "llama3.2:3b"
 OLLAMA_URL = os.environ.get("OLLAMA_GENERATE_URL", "http://localhost:11434/api/generate")
 OLLAMA_TIMEOUT_SEC = int(os.environ.get("OLLAMA_TIMEOUT_SEC", "120"))
 

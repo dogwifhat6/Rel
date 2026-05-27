@@ -18,6 +18,8 @@ def ensure_slider_defaults_if_missing() -> None:
         "range_min_slider": defaults["range_min"],
         "range_max_slider": defaults["range_max"],
         "cities_sel": [],
+        "cities_sel_sidebar": [],
+        "cities_sel_main": [],
     }
     for key, default in mapping.items():
         if key not in st.session_state:
@@ -35,6 +37,8 @@ def apply_extracted_filters_to_session(parsed: dict[str, Any], db_cities: tuple[
     extracted = resolved["cities"]
     st.session_state["cities_options_list"] = sorted({*db_cities, *extracted}, key=lambda s: s.casefold())
     st.session_state["cities_sel"] = extracted
+    st.session_state["cities_sel_sidebar"] = extracted
+    st.session_state["cities_sel_main"] = extracted
 
 
 def ensure_city_options_initialized(db_cities: tuple[str, ...]) -> None:

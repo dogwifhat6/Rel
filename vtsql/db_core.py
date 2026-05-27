@@ -29,22 +29,29 @@ def db_connect(overrides: dict[str, Any] | None = None):
 
 
 def fetch_distinct_cities(overrides: dict[str, Any] | None = None) -> tuple[str, ...]:
-    with db_connect(overrides) as conn:
+    conn = db_connect(overrides)
+    try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT DISTINCT TRIM(city) AS city FROM city_metrics "
                 "WHERE city IS NOT NULL AND TRIM(city) <> '' ORDER BY city"
             )
             rows = [r[0] for r in cur.fetchall() if r[0]]
-    return tuple(rows)
+        return tuple(rows)
+    finally:
+        conn.close()
 
 
 def run_select_query(
     sql: str, params: tuple[Any, ...], overrides: dict[str, Any] | None = None
 ) -> tuple[list[dict[str, Any]], Optional[str]]:
+    conn = None
     try:
-        with db_connect(overrides) as conn:
-            df = pd.read_sql_query(sql, conn, params=params)
+        conn = db_connect(overrides)
+        df = pd.read_sql_query(sql, conn, params=params)
         return df.to_dict(orient="records"), None
     except Exception as exc:  # noqa: BLE001
         return [], str(exc)
+    finally:
+        if conn is not None:
+            conn.close()

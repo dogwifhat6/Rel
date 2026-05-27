@@ -9,9 +9,9 @@ User input (voice or text)
         ↓
   [Whisper] — transcribe audio to text (voice path only)
         ↓
-  [Tool 1] Qwen 2.5 — classify intent (SELECT vs. MODIFY)
+  [Tool 1] Llama 3 (3B) — classify intent (SELECT vs. MODIFY)
         ↓ blocked if MODIFY
-  [Tool 2] Qwen 2.5 — extract filters as structured JSON
+  [Tool 2] Llama 3 (3B) — extract filters as structured JSON
         ↓
   Sliders auto-update to reflect what was understood
         ↓ (user can adjust, then click Run Query)
@@ -26,7 +26,7 @@ Two LLM calls act as discrete tools: one guards against unsafe operations, the o
 
 - Python 3.9+
 - PostgreSQL
-- Ollama + `qwen2.5`
+- Ollama + `llama3.2:3b`
 - `faster-whisper`
 - PortAudio (required by `sounddevice`)
 
@@ -40,7 +40,7 @@ pip install -r requirements.txt
 
 ```bash
 # Install from https://ollama.com/download, then:
-ollama pull qwen2.5
+ollama pull llama3.2:3b
 ollama serve
 ```
 

@@ -1,12 +1,17 @@
-cat > .gitignore << 'EOF'
-venv/
 __pycache__/
-*.pyc
-*.pyo
-.env
-*.wav
-.streamlit/
+*.py[cod]
 *.egg-info/
+.eggs/
 dist/
 build/
-EOF.env
+.venv/
+venv/
+.env
+.streamlit/secrets.toml
+.DS_Store
+.idea/
+.vscode/
+*.wav
+*.mp3
+.cursor/
+*.db

@@ -1,0 +1,9 @@
+{
+  "name": "voice-to-sql-push",
+  "version": "1.0.0",
+  "description": "Voice-to-SQL Query App",
+  "scripts": {
+    "dev": "[ -d .venv ] && .venv/bin/streamlit run app.py || streamlit run app.py",
+    "api": "[ -d .venv ] && .venv/bin/python run_api.py || python3 run_api.py"
+  }
+}

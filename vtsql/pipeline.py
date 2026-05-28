@@ -9,6 +9,14 @@ from vtsql.llm import generate_sql, validate_sql
 
 def process_question(text: str) -> None:
     """Single pipeline step: question -> SQL -> safety check -> DB -> results or error message."""
+    from vtsql.prerequisites import check_prerequisites
+    try:
+        check_prerequisites()
+    except Exception as exc:  # noqa: BLE001
+        st.session_state["error"] = str(exc)
+        st.session_state["status"] = "Prerequisites failed"
+        return
+
     st.session_state["error"] = ""
     st.session_state["transcript"] = text
     st.session_state["sql"] = ""

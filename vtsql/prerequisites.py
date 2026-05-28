@@ -9,7 +9,13 @@ class PrerequisitesNotMetError(ImportError):
     """Custom ImportError raised when local dependencies/prerequisites are missing."""
     pass
 
-def check_prerequisites() -> None:
+_prerequisites_checked = False
+
+def check_prerequisites(force: bool = False) -> None:
+    global _prerequisites_checked
+    if _prerequisites_checked and not force:
+        return
+
     if os.environ.get("BYPASS_VTSQL_PRECHECKS") == "1":
         return
 
@@ -119,3 +125,5 @@ def check_prerequisites() -> None:
         msg.append("   export BYPASS_VTSQL_PRECHECKS=1")
         msg.append("="*80 + "\n")
         raise PrerequisitesNotMetError("\n".join(msg))
+
+    _prerequisites_checked = True

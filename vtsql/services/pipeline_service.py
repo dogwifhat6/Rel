@@ -30,6 +30,9 @@ def check_postgres(db_overrides: dict[str, Any] | None = None) -> tuple[bool, st
 
 
 def run_interpret(text: str) -> dict[str, Any]:
+    from vtsql.prerequisites import check_prerequisites
+    check_prerequisites()
+
     stripped = text.strip()
     if not stripped:
         raise ValueError("Text must not be empty")
@@ -62,6 +65,9 @@ def run_interpret(text: str) -> dict[str, Any]:
 
 
 def run_query(sql: str, db_overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    from vtsql.prerequisites import check_prerequisites
+    check_prerequisites()
+
     ok, err = validate_sql(sql)
     if not ok:
         raise ValueError(f"Safety Check Failed: {err}")

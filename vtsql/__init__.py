@@ -1,5 +1,8 @@
 """Voice-to-SQL app package."""
 
+from vtsql.prerequisites import check_prerequisites
+check_prerequisites()
+
 from vtsql.services.pipeline_service import run_nl_query, run_interpret, run_query
 from vtsql.client import VoiceToSQLClient
 from vtsql.audio_core import transcribe_upload

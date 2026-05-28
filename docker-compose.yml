@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  # 1. PostgreSQL Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: vtsql-postgres
+    restart: always
+    environment:
+      POSTGRES_DB: city_alerte
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # 2. Voice-to-SQL REST API Service
+  api:
+    build: .
+    container_name: vtsql-api
+    command: python run_api.py
+    ports:
+      - "8000:8000"
+    environment:
+      - BYPASS_VTSQL_PRECHECKS=1
+      - DB_HOST=postgres
+      - DB_NAME=city_alerte
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - OLLAMA_GENERATE_URL=http://host.docker.internal:11434/api/generate
+      - OLLAMA_EMBED_URL=http://host.docker.internal:11434/api/embeddings
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+
+  # 3. Voice-to-SQL Streamlit Dashboard
+  dashboard:
+    build: .
+    container_name: vtsql-dashboard
+    command: streamlit run app.py --server.port=8502 --server.address=0.0.0.0
+    ports:
+      - "8502:8502"
+    environment:
+      - BYPASS_VTSQL_PRECHECKS=1
+      - DB_HOST=postgres
+      - DB_NAME=city_alerte
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - OLLAMA_GENERATE_URL=http://host.docker.internal:11434/api/generate
+      - OLLAMA_EMBED_URL=http://host.docker.internal:11434/api/embeddings
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - postgres
+
+volumes:
+  pgdata:

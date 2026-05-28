@@ -5,7 +5,6 @@ FROM python:3.10-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libportaudio2 \
-    libportaudiocpp2 \
     portaudio19-dev \
     libpq-dev \
     gcc \

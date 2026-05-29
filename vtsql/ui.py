@@ -19,6 +19,7 @@ def init_state() -> None:
         "rows": None,
         "status": "Idle",
         "error": "",
+        "agent_trace": [],
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -395,6 +396,37 @@ def render_app() -> None:
         st.info(st.session_state["status"])
 
     # Debug
-    if st.session_state.get("raw_llm"):
-        with st.expander("🐛 Debug: raw LLM output"):
-            st.code(st.session_state["raw_llm"], language="sql")
+    if st.session_state.get("agent_trace") or st.session_state.get("raw_llm"):
+        with st.expander("🐛 Debug: Multi-Agent Execution Trace"):
+            if st.session_state.get("agent_trace"):
+                st.markdown("### 🤖 Agentic Dialogue & Self-Correction Log")
+                for step in st.session_state["agent_trace"]:
+                    attempt = step.get("attempt", "1")
+                    st.markdown(f"**Attempt #{attempt}**")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Generated SQL:**")
+                        st.code(step.get("sql", ""), language="sql")
+                    with col2:
+                        critic_status = step.get("critic", "UNKNOWN")
+                        db_status = step.get("db", "UNKNOWN")
+                        feedback = step.get("feedback", "")
+                        
+                        if critic_status.upper().startswith("APPROVED"):
+                            st.success(f"✓ Critic Agent: {critic_status}")
+                        else:
+                            st.error(f"✗ Critic Agent: {critic_status}")
+                            
+                        if db_status == "SUCCESS":
+                            st.success(f"✓ DB Execution Check: {db_status}")
+                        elif db_status == "UNKNOWN":
+                            st.info(f"DB Check: {db_status}")
+                        else:
+                            st.error(f"✗ DB Check: {db_status}")
+                            
+                        if feedback:
+                            st.markdown(f"*Correction Feedback:* `{feedback}`")
+                    st.divider()
+            else:
+                st.markdown("### 🧾 Raw SQL Output")
+                st.code(st.session_state.get("raw_llm", ""), language="sql")

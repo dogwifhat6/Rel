@@ -32,7 +32,7 @@ SAMPLE_RATE=16000
 DEFAULT_DURATION=10
 WHISPER_MODEL_SIZE="base"
 OLLAMA_URL = "http://localhost:11434/api/generate"
-OLLAMA_MODEL = "qwen2.5"
+OLLAMA_MODEL = "llama3.2:3b"
 
 DB_CONFIG={
     "host":"localhost",
@@ -389,7 +389,6 @@ def main():
                 "- ❌ *Delete all critical alerts*"
             )
 
-    # ============ MAIN AREA ============
     if st.session_state.transcript:
         st.subheader("📝 Your Question")
         st.write(f"_{st.session_state.transcript}_")

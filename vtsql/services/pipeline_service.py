@@ -47,11 +47,21 @@ def run_interpret(text: str) -> dict[str, Any]:
     except Exception:  # noqa: BLE001
         pass
 
+    agent_trace = []
     if not sql:
         try:
-            sql = generate_sql(stripped)
+            from vtsql.llm import generate_sql_agentic
+            sql, agent_trace = generate_sql_agentic(stripped, db_runner=run_select_query)
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"Error during SQL generation: {exc}") from exc
+    else:
+        agent_trace = [{
+            "attempt": "Cache",
+            "sql": sql,
+            "critic": "APPROVED (Cache hit)",
+            "db": "SUCCESS",
+            "feedback": "Loaded directly from Semantic Cache"
+        }]
 
     ok, err = validate_sql(sql)
     return {
@@ -61,6 +71,7 @@ def run_interpret(text: str) -> dict[str, Any]:
         "raw_llm": sql,
         "message": err if not ok else ("Semantic cache hit" if from_cache else "SQL generated successfully"),
         "from_cache": from_cache,
+        "agent_trace": agent_trace,
     }
 
 

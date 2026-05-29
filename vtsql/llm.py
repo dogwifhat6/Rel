@@ -82,6 +82,55 @@ Q: {question}
 A:"""
 
 
+SQL_CRITIC_PROMPT = """You are a PostgreSQL Quality Assurance and Security Agent.
+Your task is to analyze the generated SQL query for schema compliance, accuracy, and security.
+
+DATABASE SCHEMA:
+{schema}
+
+USER QUESTION:
+{question}
+
+GENERATED SQL TO CRITIQUE:
+{sql}
+
+VALIDATION RULES:
+1. Table & Column names must exactly match the schema.
+2. Spatial joins between alert_readings and cities must use:
+   r.latitude BETWEEN c.boundary_lat_min AND c.boundary_lat_max AND r.longitude BETWEEN c.boundary_lon_min AND c.boundary_lon_max
+3. Ensure case-insensitive searches (ILIKE) are used for city name comparisons.
+4. Ensure a.severity matches ('LOW', 'MEDIUM', 'HIGH', 'CRITICAL') if severity filters are requested.
+5. The query MUST be a SELECT or WITH query. If there are keywords like DELETE, UPDATE, INSERT, DROP, ALTER, TRUNCATE, reject it immediately.
+6. Return EXACTLY the single word "APPROVED" if the query is safe, valid, and correct.
+7. If there are syntax bugs, wrong columns, missing JOIN conditions, or safety violations, return "REJECTED: <detailed explanation of what is wrong and how to fix it>".
+
+Now, evaluate the query. Return ONLY "APPROVED" or "REJECTED: <reasons>":
+A:"""
+
+
+SQL_REFINE_PROMPT = """You are a PostgreSQL expert correcting a previously failed or rejected SQL query.
+
+DATABASE SCHEMA:
+{schema}
+
+USER QUESTION:
+{question}
+
+PREVIOUS SQL DRAFT:
+{bad_sql}
+
+CRITICISM/ERROR FEEDBACK:
+{feedback}
+
+STRICT RULES:
+1. Correct the previous query to fix all issues mentioned in the criticism/feedback.
+2. Follow all schema rules and safety restrictions.
+3. Return ONLY a single SELECT/WITH statement. No markdown code blocks, no explanations.
+
+Now return ONLY the corrected SQL:
+A:"""
+
+
 def clean_sql_response(raw: str) -> str:
     """Strip code fences, leading 'A:' and trailing junk from the LLM output"""
     text = raw.strip()
@@ -140,3 +189,108 @@ def validate_sql(sql: str) -> tuple[bool, str]:
         return False, "Multiple SQL statements detected. Only one statement is allowed."
     
     return True, ""
+
+
+def generate_sql_agentic(
+    question: str,
+    db_runner: callable | None = None
+) -> tuple[str, list[dict[str, str]]]:
+    """Orchestrates an agentic loop between Generator and Critic with auto-correction."""
+    trace = []
+    
+    # 1. Generator generates first SQL draft
+    sql = generate_sql(question)
+    
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        step = {
+            "attempt": str(attempt),
+            "sql": sql,
+            "critic": "UNKNOWN",
+            "db": "UNKNOWN",
+            "feedback": ""
+        }
+        
+        # 1. Check static safety first
+        is_safe, err_msg = validate_sql(sql)
+        if not is_safe:
+            step["critic"] = f"REJECTED (Static check): {err_msg}"
+            step["feedback"] = f"Safety validator blocked this query. {err_msg}"
+            trace.append(step)
+            # If it's blocked, we must refine it or return error
+            if "Only read queries are allowed" in err_msg or "Forbidden keyword" in err_msg:
+                return sql, trace
+        else:
+            # 2. Invoke Critic Agent to critique the SQL
+            critic_prompt = SQL_CRITIC_PROMPT.format(
+                schema=SCHEMA_DESCRIPTION,
+                question=question,
+                sql=sql
+            )
+            payload = {
+                "model": OLLAMA_MODEL,
+                "prompt": critic_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.0,
+                    "top_p": 0.1
+                }
+            }
+            try:
+                resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT_SEC)
+                resp.raise_for_status()
+                critic_raw = resp.json().get("response", "").strip()
+            except Exception as e:
+                critic_raw = f"REJECTED: Critic service unreachable ({e})"
+
+            step["critic"] = critic_raw
+            
+            if critic_raw.upper().startswith("APPROVED"):
+                # Query approved by critic! Now attempt DB execution check if db_runner is available
+                if db_runner:
+                    _, db_err = db_runner(sql)
+                    if db_err:
+                        step["db"] = f"DATABASE ERROR: {db_err}"
+                        step["feedback"] = f"PostgreSQL failed to execute this query: {db_err}"
+                    else:
+                        step["db"] = "SUCCESS"
+                else:
+                    step["db"] = "SKIPPED (no runner)"
+            else:
+                # Critic rejected the query
+                feedback = critic_raw.split("REJECTED:", 1)[-1].strip() if "REJECTED:" in critic_raw.upper() else critic_raw
+                step["feedback"] = f"Critic feedback: {feedback}"
+                
+            trace.append(step)
+            
+            # If approved by both Critic and DB, we are done!
+            if step["critic"].upper().startswith("APPROVED") and (step["db"] in ("SUCCESS", "SKIPPED (no runner)")):
+                return sql, trace
+
+        # If we reached here, we have feedback and need to refine the query (unless it's the last attempt)
+        if attempt < max_attempts:
+            refine_prompt = SQL_REFINE_PROMPT.format(
+                schema=SCHEMA_DESCRIPTION,
+                question=question,
+                bad_sql=sql,
+                feedback=step["feedback"]
+            )
+            payload = {
+                "model": OLLAMA_MODEL,
+                "prompt": refine_prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0.0,
+                    "top_p": 0.1
+                }
+            }
+            try:
+                resp = requests.post(OLLAMA_URL, json=payload, timeout=OLLAMA_TIMEOUT_SEC)
+                resp.raise_for_status()
+                raw_refine = resp.json().get("response", "").strip()
+                sql = clean_sql_response(raw_refine)
+            except Exception as e:
+                # Fallback to current SQL if LLM call fails
+                break
+                
+    return sql, trace

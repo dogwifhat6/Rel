@@ -38,8 +38,10 @@ def process_question(text: str) -> None:
 
     if not sql:
         try:
-            with st.spinner("Generating SQL..."):
-                sql = generate_sql(text)
+            with st.spinner("🧠 Invoking AI Agents (Generating & Validating SQL)..."):
+                from vtsql.llm import generate_sql_agentic
+                sql, agent_trace = generate_sql_agentic(text, db_runner=run_select_query)
+            st.session_state["agent_trace"] = agent_trace
             st.session_state["raw_llm"] = sql
         except requests.RequestException as exc:
             st.session_state["error"] = f"Cannot reach Ollama: {exc}"
@@ -47,6 +49,14 @@ def process_question(text: str) -> None:
         except Exception as exc:  # noqa: BLE001
             st.session_state["error"] = f"Error during SQL generation: {exc}"
             return 
+    else:
+        st.session_state["agent_trace"] = [{
+            "attempt": "Cache",
+            "sql": sql,
+            "critic": "APPROVED (Cache hit)",
+            "db": "SUCCESS",
+            "feedback": "Loaded directly from Semantic Cache"
+        }]
 
     ok, err = validate_sql(sql)
     if not ok:

@@ -1,188 +1,126 @@
-# Voice-to-SQL Query App
+# Voice-to-SQL Database Query Dashboard & REST API (Prototype 2)
 
-A fully-local Streamlit app that lets you query a PostgreSQL `city_metrics` table using plain English (spoken or typed). No SQL knowledge is required.
+A fully-local, modular, and containerized Python application that translates natural-language questions (spoken or typed) into secure PostgreSQL queries. It executes them against a multi-table database and visualizes coordinate points dynamically using interactive geospatial maps.
 
-## How it works
+---
 
-```text
-User input (voice or text)
-        ↓
-  [Whisper] — transcribe audio to text (voice path only)
-        ↓
-  [Tool 1] Llama 3 (3B) — classify intent (SELECT vs. MODIFY)
-        ↓ blocked if MODIFY
-  [Tool 2] Llama 3 (3B) — extract filters as structured JSON
-        ↓
-  Sliders auto-update to reflect what was understood
-        ↓ (user can adjust, then click Run Query)
-  Python builds a parameterized SELECT statement
-        ↓
-  PostgreSQL → results table
-```
+## 🚀 Key Features
 
-Two LLM calls act as discrete tools: one guards against unsafe operations, the other extracts query parameters. SQL is always built by Python. The model never writes SQL directly.
+*   **Multi-AI Agentic Query Builder**:
+    *   **Agent 1 (SQL Generator)**: Generates safe SQL statements using the local `llama3.2:3b` model.
+    *   **Agent 2 (SQL Critic/Validator)**: Evaluates generated SQL against database schema constraints, case-sensitivity rules, and security policies.
+    *   **Database Self-Healing**: Automatically feeds database driver errors back to the Generator agent for correction, looping up to 3 times before execution.
+*   **High-Performance Semantic Caching**:
+    *   Saves queries in a local SQLite vector database using Ollama embeddings.
+    *   Matches semantically similar questions using cosine similarity, returning cached queries in **under 50ms** without invoking LLM models.
+*   **Interactive Geospatial Maps (PyDeck)**:
+    *   Plots coordinates dynamically onto a map, color-coded by alert severity (Red for `CRITICAL`, Orange for `HIGH`, etc.).
+    *   Renders semi-transparent bounding box boundary polygons for cities to visually demonstrate spatial intersections.
+*   **Premium Dark UI Styling**:
+    *   Outfitted with a native space-navy dark theme ([.streamlit/config.toml](.streamlit/config.toml)), Google Font typography (*Outfit*), glassmorphic card widgets, smooth hover micro-animations, and an active red pulsing microphone badge.
+*   **REST API Integration & Standalone Python Library**:
+    *   Exposes endpoints via FastAPI (such as `/v1/nl-query`, `/v1/transcribe`, and `/v1/voice-query`).
+    *   Exposes in-process logic so you can run `import voicetosqldatabase` in other scripts.
 
-## Prerequisites
+---
 
-- Python 3.9+
-- PostgreSQL
-- Ollama + `llama3.2:3b`
-- `faster-whisper`
-- PortAudio (required by `sounddevice`)
+## 🛠️ Database Schema
 
-## Install dependencies
+The system joins three tables inside PostgreSQL dynamically using a spatial join on coordinates:
 
+1.  **cities**: Contains cities, states, and coordinates bounding boxes (`boundary_lat_min`, `boundary_lat_max`, etc.).
+2.  **alerts**: Contains alert metadata (`alert_type`, `severity`, and `detected_at`).
+3.  **alert_readings**: Contains alert details, including temperature, humidity, bandwidth, and spatial coordinates (`latitude`, `longitude`).
+
+---
+
+## ⚙️ Prerequisites
+
+Ensure you have the following services installed and running locally:
+
+*   **Python**: Version `3.9` or higher.
+*   **Ollama**: Install from [ollama.com](https://ollama.com) and pull the model:
+    ```bash
+    ollama pull llama3.2:3b
+    ```
+*   **PostgreSQL**: Configured with database `city_alerte` running on default port `5432`.
+*   **PortAudio**: System library required for local microphone recording:
+    *   **macOS**: `brew install portaudio`
+    *   **Ubuntu/Debian**: `sudo apt-get install portaudio19-dev libportaudio2`
+
+---
+
+## 📦 Local Setup & Execution
+
+### 1. Install Python Dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-## Install and start Ollama
+### 2. Configure Environment (Optional)
+By default, the database attempts connection on `localhost:5432` with username `postgres` and database name `city_alerte`. Define these environment variables if your local configuration differs:
+```bash
+export DB_HOST="your-db-host"
+export DB_PORT="your-db-port"
+export DB_NAME="city_alerte"
+export DB_USER="your-db-user"
+export DB_PASSWORD="your-db-password"
+```
+
+### 3. Launch Services
+```bash
+# Start the Streamlit UI Dashboard (Access at http://localhost:8502)
+npm run dev
+
+# Start the FastAPI REST API Server (Access at http://localhost:8000)
+npm run api
+```
+
+---
+
+## 🐳 Containerized Execution (Docker Compose)
+
+The application is fully container-ready. You can build and spin up the PostgreSQL database container, the API server container, and the Streamlit dashboard container in one command:
 
 ```bash
-# Install from https://ollama.com/download, then:
-ollama pull llama3.2:3b
-ollama serve
+docker-compose up --build
 ```
+*   **Streamlit UI**: `http://localhost:8502`
+*   **FastAPI API**: `http://localhost:8000`
+*   *Note: Containers bridge dynamically to your host machine's Ollama instance over the network gateway (`host.docker.internal`).*
 
-## Install PortAudio
+---
+
+## 🐍 Programmatic Python Library Usage
+
+You can install this repository as an editable python package to import Voice-to-SQL logic directly inside your other python applications:
 
 ```bash
-# macOS
-brew install portaudio
-
-# Ubuntu / Debian
-sudo apt-get install portaudio19-dev
+# Install the package globally in your environment
+pip install -e .
 ```
 
-## Database setup
+Then write scripts utilizing direct in-process pipelines:
+```python
+import voicetosqldatabase as vts
 
-Create a database (for example `sample_city`) and run:
+# 1. Run local in-process queries (no server needed)
+result = vts.run_nl_query("Which city did the most recent critical alert come from?")
+print(f"PostgreSQL SQL: {result['sql']}")
+print(f"Results: {result['rows']}")
+
+# 2. Or query programmatically via REST client (if api service is running)
+client = vts.VoiceToSQLClient(base_url="http://localhost:8000")
+data = client.nl_query("Show me all alerts in Mumbai")
+```
+*Note: An automated system precheck diagnostics module runs lazily during initial in-process executions to verify that Postgres, sounddevice, and Ollama are configured and healthy.*
+
+---
+
+## 🧪 Unit Testing
+
+Run the local test suites to verify syntax compliance and mock agent correction loops:
 
 ```bash
-psql -U postgres -d sample_city -f sql/schema.sql
+.venv/bin/python -m unittest discover -s . -p "*test_logic.py"
 ```
-
-Expected schema:
-
-```sql
-CREATE TABLE city_metrics (
-    id          SERIAL PRIMARY KEY,
-    city        TEXT    NOT NULL,
-    temperature INTEGER NOT NULL,
-    humidity    INTEGER NOT NULL,
-    "range"     INTEGER NOT NULL
-);
-```
-
-## Configuration
-
-Tune constants at the top of `app.py`:
-
-- `SAMPLE_RATE`
-- `DEFAULT_DURATION`
-- `WHISPER_MODEL_SIZE`
-- `OLLAMA_MODEL`
-- `OLLAMA_URL`
-- `COLUMN_RANGES`
-
-### PostgreSQL credentials
-
-The app resolves DB config in this order:
-
-1. Environment variables (`DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`)
-2. Streamlit secrets (`.streamlit/secrets.toml`)
-3. Defaults in `app.py`
-
-Set secrets locally:
-
-```bash
-cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-```
-
-Then edit `.streamlit/secrets.toml` and set your password.
-
-## Run the app
-
-```bash
-streamlit run app.py
-```
-
-Open `http://localhost:8501`.
-
-## REST API (integration)
-
-For embedding in other applications (React, mobile, microservices), run the FastAPI server:
-
-```bash
-python run_api.py
-```
-
-- Swagger UI: `http://localhost:8000/docs`
-- Full API guide: [docs/API.md](docs/API.md)
-
-One-shot NL query:
-
-```bash
-curl -X POST http://localhost:8000/v1/nl-query \
-  -H "Content-Type: application/json" \
-  -d '{"text":"Mumbai temperature above 30","execute":true}'
-```
-
-## Usage
-
-### Voice input
-
-1. Set recording duration in the sidebar.
-2. Click **Record microphone**.
-3. Whisper transcribes locally.
-
-### Text input
-
-1. Type a query in the sidebar.
-2. Click **Submit typed query**.
-
-### After input
-
-- Intent is classified first.
-- MODIFY requests are blocked before any query execution.
-- SELECT requests go to filter extraction.
-- Sliders and city selection auto-update from extracted filters.
-- You can manually adjust values, then click **Run Query**.
-
-## Example queries
-
-- `Show me Mumbai with temperature above 30`
-- `Find rows where humidity is between 60 and 90`
-- `Cities with range less than 300 and temperature under 25`
-- `Delhi and Pune with humidity above 50`
-
-Blocked examples:
-
-- `Delete all rows in Mumbai`
-- `Drop the city_metrics table`
-- `Update temperature to 35`
-
-## Debug panel
-
-The collapsed Debug panel shows:
-
-- Raw JSON response from Ollama
-- Parsed intent JSON
-- Parsed filter JSON
-- Normalized filter values used for SQL construction
-- SQL template and parameter tuple
-
-## Privacy
-
-Everything runs locally:
-
-- Audio is recorded and transcribed on your machine.
-- LLM inference runs through local Ollama.
-- No external API is required for normal runtime.
-
-## Limitations
-
-- Only `SELECT` operations are supported by design.
-- The `city_metrics` schema is hardcoded for this version.
-- Voice quality and whisper model choice affect transcription accuracy.
-- Ambiguous language can be misparsed; sliders let you correct values before running query.

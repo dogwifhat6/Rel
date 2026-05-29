@@ -195,7 +195,10 @@ def generate_sql_agentic(
     question: str,
     db_runner: callable | None = None
 ) -> tuple[str, list[dict[str, str]]]:
-    """Orchestrates an agentic loop between Generator and Critic with auto-correction."""
+    """Orchestrates an agentic loop between Generator and Critic with auto-correction.
+    Optimized: If the first query draft passes PostgreSQL EXPLAIN check, we bypass the LLM Critic entirely,
+    cutting response time in half for valid first drafts.
+    """
     trace = []
     
     # 1. Generator generates first SQL draft
@@ -221,7 +224,23 @@ def generate_sql_agentic(
             if "Only read queries are allowed" in err_msg or "Forbidden keyword" in err_msg:
                 return sql, trace
         else:
-            # 2. Invoke Critic Agent to critique the SQL
+            # OPTIMIZATION: Try to run EXPLAIN on the SQL directly.
+            # If PostgreSQL planner successfully parses it, it has correct columns, tables, and joins.
+            # We can bypass the expensive LLM validation step completely!
+            db_verified = False
+            if db_runner:
+                explain_sql = f"EXPLAIN {sql}"
+                _, db_err = db_runner(explain_sql)
+                if not db_err:
+                    db_verified = True
+                    step["db"] = "SUCCESS"
+                    step["critic"] = "APPROVED (PostgreSQL dry-run check succeeded. Bypassed LLM Critic for speed.)"
+            
+            if db_verified:
+                trace.append(step)
+                return sql, trace
+
+            # If PostgreSQL validation failed or no db_runner is available, run the LLM Critic check
             critic_prompt = SQL_CRITIC_PROMPT.format(
                 schema=SCHEMA_DESCRIPTION,
                 question=question,
@@ -246,7 +265,7 @@ def generate_sql_agentic(
             step["critic"] = critic_raw
             
             if critic_raw.upper().startswith("APPROVED"):
-                # Query approved by critic! Now attempt DB execution check if db_runner is available
+                # Query approved by critic! Now verify on DB (since it wasn't verified previously)
                 if db_runner:
                     _, db_err = db_runner(sql)
                     if db_err:

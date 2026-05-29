@@ -1,11 +1,11 @@
 version: "3.8"
 
 services:
-  # 1. PostgreSQL Database Service
+  # ── 1. PostgreSQL Database ────────────────────────
   postgres:
     image: postgres:15-alpine
     container_name: vtsql-postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_DB: city_alerte
       POSTGRES_USER: postgres
@@ -14,11 +14,19 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./sql/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d city_alerte"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
-  # 2. Voice-to-SQL REST API Service
+  # ── 2. Voice-to-SQL REST API ──────────────────────
   api:
     build: .
     container_name: vtsql-api
+    restart: unless-stopped
     command: python run_api.py
     ports:
       - "8000:8000"
@@ -30,15 +38,26 @@ services:
       - DB_PASSWORD=postgrespassword
       - OLLAMA_GENERATE_URL=http://host.docker.internal:11434/api/generate
       - OLLAMA_EMBED_URL=http://host.docker.internal:11434/api/embeddings
+      - VTSQL_CACHE_DIR=/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - cache_data:/app/data
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
-  # 3. Voice-to-SQL Streamlit Dashboard
+  # ── 3. Streamlit Dashboard ────────────────────────
   dashboard:
     build: .
     container_name: vtsql-dashboard
+    restart: unless-stopped
     command: streamlit run app.py --server.port=8502 --server.address=0.0.0.0
     ports:
       - "8502:8502"
@@ -50,10 +69,21 @@ services:
       - DB_PASSWORD=postgrespassword
       - OLLAMA_GENERATE_URL=http://host.docker.internal:11434/api/generate
       - OLLAMA_EMBED_URL=http://host.docker.internal:11434/api/embeddings
+      - VTSQL_CACHE_DIR=/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    volumes:
+      - cache_data:/app/data
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8502/_stcore/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
 
 volumes:
   pgdata:
+  cache_data:

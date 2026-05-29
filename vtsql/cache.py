@@ -9,7 +9,8 @@ import requests
 
 from vtsql.config import CACHE_SIMILARITY_THRESHOLD, OLLAMA_EMBED_URL, OLLAMA_MODEL
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "query_cache.db")
+_cache_dir = os.environ.get("VTSQL_CACHE_DIR", os.path.dirname(os.path.dirname(__file__)))
+DB_PATH = os.path.join(_cache_dir, "query_cache.db")
 
 
 def init_cache_db() -> None:
